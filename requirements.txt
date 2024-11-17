@@ -1,0 +1,7 @@
+pyrogram
+pymongo
+redis
+requests
+pytesseract
+Pillow
+googletrans==4.0.0-rc1
