@@ -6,45 +6,58 @@ Commands:
 
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import importlib
-import os
-
-PLUGIN_DIR = "plugins"
-PLUGINS = {}
-
-def load_plugins():
-    """Dynamically load plugins from the plugins directory."""
-    for file in os.listdir(PLUGIN_DIR):
-        if file.endswith(".py") and file != "__init__.py":
-            plugin_name = file[:-3]
-            module = importlib.import_module(f"{PLUGIN_DIR}.{plugin_name}")
-            PLUGINS[plugin_name] = {
-                "module": module,
-                "doc": module.__doc__.strip() if module.__doc__ else "No description available."
-            }
+from plugins import PLUGINS  # Import the shared PLUGINS dictionary
 
 @Client.on_message(filters.command("help") & filters.me)
 async def help_handler(client, message):
-    """List available plugins and descriptions."""
+    """
+    Display a list of all loaded plugins with descriptions.
+    Users can click on a plugin name to view its detailed description.
+    """
+    if not PLUGINS:
+        await message.reply_text("No plugins are currently available.")
+        return
+
+    # Generate buttons for each plugin
     buttons = [
-        [InlineKeyboardButton(plugin, callback_data=plugin)] for plugin in PLUGINS.keys()
+        [InlineKeyboardButton(plugin.capitalize(), callback_data=f"help:{plugin}")] for plugin in sorted(PLUGINS.keys())
     ]
     await message.reply_text(
-        "Available plugins (click to view details):",
+        "Available plugins (click a plugin for details):",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-@Client.on_callback_query()
-async def help_callback(client, callback_query):
-    """Provide detailed information for a selected plugin."""
-    plugin_name = callback_query.data
-    plugin_info = PLUGINS.get(plugin_name, None)
+
+@Client.on_callback_query(filters.regex(r"^help:(.+)"))
+async def plugin_details(client, callback_query):
+    """
+    Display detailed information about a specific plugin.
+    """
+    plugin_name = callback_query.data.split(":")[1]
+    plugin_info = PLUGINS.get(plugin_name)
 
     if plugin_info:
         doc = plugin_info["doc"]
-        await callback_query.message.edit_text(f"**{plugin_name.capitalize()} Plugin**\n\n{doc}")
+        await callback_query.message.edit_text(
+            f"**{plugin_name.capitalize()} Plugin**\n\n{doc}",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("Back", callback_data="help:back")]]
+            )
+        )
     else:
         await callback_query.message.edit_text("Plugin not found.")
 
-# Load plugins on bot startup
-load_plugins()
+
+@Client.on_callback_query(filters.regex(r"^help:back"))
+async def back_to_help_menu(client, callback_query):
+    """
+    Navigate back to the main help menu from plugin details.
+    """
+    buttons = [
+        [InlineKeyboardButton(plugin.capitalize(), callback_data=f"help:{plugin}")] for plugin in sorted(PLUGINS.keys())
+    ]
+    await callback_query.message.edit_text(
+        "Available plugins (click a plugin for details):",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
+    
