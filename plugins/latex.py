@@ -1,22 +1,14 @@
-"""
-Plugin Description: Parse LaTeX code, generate a PDF, and cache or log results.
-Commands:
-- .latex <LaTeX code>: Parses LaTeX code and sends the generated PDF.
-"""
-
 import os
 import subprocess
 import redis
-from pymongo import MongoClient
 from pyrogram import Client, filters
 from config import Config
 import uuid
+from utils.cache import Cache  # Use the Cache utility for Redis
+from utils.db import Database  # Use the Database utility (although not used for logging in this case)
 
-# MongoDB and Redis setup
-redis_client = redis.StrictRedis.from_url(Config.REDIS_URL)
-mongo_client = MongoClient(Config.MONGO_URI)
-db = mongo_client["telegram_userbot"]
-latex_logs_collection = db["latex_logs"]
+# Redis caching utility
+cache = Cache()
 
 @Client.on_message(filters.command("latex") & filters.me)
 async def latex_handler(client, message):
@@ -29,7 +21,7 @@ async def latex_handler(client, message):
     cache_key = f"latex_pdf:{latex_code}"
 
     # Check Redis cache for the result
-    cached_pdf = redis_client.get(cache_key)
+    cached_pdf = cache.get(cache_key)
     if cached_pdf:
         pdf_path = f"./temp_{uuid.uuid4().hex}.pdf"
         with open(pdf_path, "wb") as f:
@@ -71,17 +63,7 @@ async def latex_handler(client, message):
         # Cache the PDF content in Redis
         with open(pdf_file, "rb") as f:
             pdf_content = f.read()
-        redis_client.set(cache_key, pdf_content, ex=86400)  # Cache for 1 day
-
-        # Log LaTeX code and result in MongoDB
-        latex_logs_collection.insert_one({
-            "user_id": message.from_user.id,
-            "username": message.from_user.username,
-            "latex_code": latex_code,
-            "chat_id": message.chat.id,
-            "timestamp": message.date,
-            "status": "success"
-        })
+        cache.set(cache_key, pdf_content, ex=86400)  # Cache for 1 day
 
         # Send the PDF file
         await client.send_document(
@@ -91,15 +73,6 @@ async def latex_handler(client, message):
         )
 
     except Exception as e:
-        # Log the failure in MongoDB
-        latex_logs_collection.insert_one({
-            "user_id": message.from_user.id,
-            "username": message.from_user.username,
-            "latex_code": latex_code,
-            "chat_id": message.chat.id,
-            "timestamp": message.date,
-            "status": f"failed: {e}"
-        })
         await message.reply_text(f"Error: {e}")
 
     finally:
@@ -108,3 +81,4 @@ async def latex_handler(client, message):
             for file in files:
                 os.remove(os.path.join(root, file))
         os.rmdir(temp_dir)
+        
