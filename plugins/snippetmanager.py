@@ -1,5 +1,5 @@
 """
-Plugin Description: Manage code snippets using MongoDB.
+Plugin Description: Manage code snippets using MongoDB with Redis caching.
 Commands:
 - .savesnippet <title>: Save the replied code snippet with a title.
 - .getsnippet <title>: Retrieve the code snippet by title.
@@ -8,13 +8,13 @@ Commands:
 """
 
 from pyrogram import Client, filters
-from pymongo import MongoClient
 from config import Config
+from utils.db import Database  # Using the Database utility
+from utils.cache import Cache  # Using the Cache utility
 
-# MongoDB setup
-mongo_client = MongoClient(Config.MONGO_URI)
-db = mongo_client["telegram_userbot"]
-snippets_collection = db["snippets"]
+# MongoDB and Redis setup via Database and Cache utility
+db = Database()
+cache = Cache()
 
 @Client.on_message(filters.command("savesnippet") & filters.me & filters.reply)
 async def save_snippet(client, message):
@@ -31,11 +31,16 @@ async def save_snippet(client, message):
         return
 
     # Save snippet to MongoDB
-    snippets_collection.update_one(
-        {"title": title, "user_id": message.from_user.id},
-        {"$set": {"code": code, "chat_id": message.chat.id, "timestamp": message.date}},
+    db.update_document(
+        collection_name="snippets",
+        query={"title": title, "user_id": message.from_user.id},
+        update_data={"code": code, "chat_id": message.chat.id, "timestamp": message.date},
         upsert=True
     )
+
+    # Clear the cache for the title in case it exists
+    cache.delete(f"snippet:{message.from_user.id}:{title}")
+
     await message.reply_text(f"Snippet '{title}' has been saved successfully.")
 
 @Client.on_message(filters.command("getsnippet") & filters.me)
@@ -46,17 +51,30 @@ async def get_snippet(client, message):
         return
 
     title = args[1].strip()
-    snippet = snippets_collection.find_one({"title": title, "user_id": message.from_user.id})
+    cache_key = f"snippet:{message.from_user.id}:{title}"
+
+    # Check Redis cache for the snippet
+    cached_snippet = cache.get(cache_key)
+    if cached_snippet:
+        await message.reply_text(f"**Snippet '{title}':**\n\n{cached_snippet.decode()}")
+        return
+
+    # If not found in cache, query MongoDB
+    snippet = db.find_document(collection_name="snippets", query={"title": title, "user_id": message.from_user.id})
 
     if not snippet:
         await message.reply_text(f"No snippet found with the title '{title}'.")
         return
 
+    # Cache the snippet in Redis
+    cache.set(cache_key, snippet["code"], ex=86400)  # Cache for 1 day
+
     await message.reply_text(f"**Snippet '{title}':**\n\n{snippet['code']}")
 
 @Client.on_message(filters.command("listsnippets") & filters.me)
 async def list_snippets(client, message):
-    snippets = snippets_collection.find({"user_id": message.from_user.id})
+    # Retrieve snippet titles from MongoDB
+    snippets = db.get_collection("snippets").find({"user_id": message.from_user.id})
     titles = [snippet["title"] for snippet in snippets]
 
     if not titles:
@@ -73,10 +91,14 @@ async def delete_snippet(client, message):
         return
 
     title = args[1].strip()
-    result = snippets_collection.delete_one({"title": title, "user_id": message.from_user.id})
+
+    # Delete snippet from MongoDB
+    result = db.get_collection("snippets").delete_one({"title": title, "user_id": message.from_user.id})
 
     if result.deleted_count == 0:
         await message.reply_text(f"No snippet found with the title '{title}'.")
     else:
+        # Clear the cache for the deleted snippet
+        cache.delete(f"snippet:{message.from_user.id}:{title}")
         await message.reply_text(f"Snippet '{title}' has been deleted.")
-
+    
