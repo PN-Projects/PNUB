@@ -5,16 +5,8 @@ Commands:
 """
 
 from pyrogram import Client, filters
-import redis
-from pymongo import MongoClient
 from googletrans import Translator
-from config import Config
-
-# MongoDB and Redis setup
-redis_client = redis.StrictRedis.from_url(Config.REDIS_URL)
-mongo_client = MongoClient(Config.MONGO_URI)
-db = mongo_client["telegram_userbot"]
-translate_logs_collection = db["translate_logs"]
+from utils import redis_client  # Import centralized Redis connection
 
 # Supported Indian languages (ISO 639-1 codes)
 SUPPORTED_LANGUAGES = {
@@ -72,33 +64,12 @@ async def translate_handler(client, message):
         translated = translator.translate(text_to_translate, dest=language_code)
         translated_text = translated.text
 
-        # Cache translation result in Redis
+        # Cache translation result in Redis for 1 day
         redis_client.set(cache_key, translated_text, ex=86400)  # Cache for 1 day
-
-        # Log translation request and result in MongoDB
-        translate_logs_collection.insert_one({
-            "user_id": message.from_user.id,
-            "username": message.from_user.username,
-            "original_text": text_to_translate,
-            "translated_text": translated_text,
-            "source_language": translated.src,
-            "target_language": language_code,
-            "chat_id": message.chat.id,
-            "timestamp": message.date
-        })
 
         # Reply with the translated text
         await message.reply_text(f"**Translated Text ({SUPPORTED_LANGUAGES[language_code]}):**\n{translated_text}")
 
     except Exception as e:
-        # Log the failure in MongoDB
-        translate_logs_collection.insert_one({
-            "user_id": message.from_user.id,
-            "username": message.from_user.username,
-            "original_text": text_to_translate,
-            "target_language": language_code,
-            "chat_id": message.chat.id,
-            "timestamp": message.date,
-            "status": f"failed: {e}"
-        })
         await message.reply_text(f"Error during translation: {e}")
+            
