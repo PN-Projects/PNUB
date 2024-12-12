@@ -2,17 +2,12 @@
 Utility for MongoDB operations.
 """
 
-from pymongo import MongoClient
-from config import Config
+from . import mongo_db
 
 class Database:
-    def __init__(self):
-        self.client = MongoClient(Config.MONGO_URI)
-        self.db = self.client["telegram_userbot"]
-
     def get_collection(self, name):
         """Get a MongoDB collection."""
-        return self.db[name]
+        return mongo_db[name]
 
     def insert_document(self, collection_name, document):
         """Insert a document into a collection."""
@@ -33,3 +28,4 @@ class Database:
         """Delete a document from a collection."""
         collection = self.get_collection(collection_name)
         return collection.delete_one(query)
+        
