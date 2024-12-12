@@ -5,18 +5,12 @@ Commands:
 """
 
 from pyrogram import Client, filters
-import redis
-from pymongo import MongoClient
 from io import StringIO
 import sys
+from utils import redis_client, mongo_db  # Import centralized connections
 
-# MongoDB and Redis setup
-from config import Config
-
-redis_client = redis.StrictRedis.from_url(Config.REDIS_URL)
-mongo_client = MongoClient(Config.MONGO_URI)
-db = mongo_client["telegram_userbot"]
-eval_logs_collection = db["eval_logs"]
+# MongoDB collection for logs
+eval_logs_collection = mongo_db["eval_logs"]
 
 @Client.on_message(filters.command("eval") & filters.me)
 async def eval_handler(client, message):
@@ -71,3 +65,4 @@ async def eval_handler(client, message):
 
     # Reply with the result
     await message.reply_text(f"**Result:**\n{output or result}")
+    
