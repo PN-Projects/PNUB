@@ -8,15 +8,12 @@ import pytesseract
 from PIL import Image
 from pyrogram import Client, filters
 import redis
-from pymongo import MongoClient
 import os
 from config import Config
+from utils.cache import Cache  # Using the Cache utility
 
-# MongoDB and Redis setup
-redis_client = redis.StrictRedis.from_url(Config.REDIS_URL)
-mongo_client = MongoClient(Config.MONGO_URI)
-db = mongo_client["telegram_userbot"]
-ocr_logs_collection = db["ocr_logs"]
+# Redis caching utility
+cache = Cache()
 
 # Path to Tesseract (update this path if needed)
 pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
@@ -33,7 +30,7 @@ async def ocr_handler(client, message):
     cache_key = f"ocr_result:{file_path}"
 
     # Check Redis cache for the OCR result
-    cached_result = redis_client.get(cache_key)
+    cached_result = cache.get(cache_key)
     if cached_result:
         await message.reply_text(f"**Cached OCR Result:**\n{cached_result.decode()}")
         os.remove(file_path)  # Clean up downloaded file
@@ -50,34 +47,16 @@ async def ocr_handler(client, message):
             return
 
         # Cache the OCR result in Redis for 1 day
-        redis_client.set(cache_key, extracted_text, ex=86400)
-
-        # Log the OCR request and result in MongoDB
-        ocr_logs_collection.insert_one({
-            "user_id": message.from_user.id,
-            "username": message.from_user.username,
-            "file_name": os.path.basename(file_path),
-            "extracted_text": extracted_text,
-            "chat_id": message.chat.id,
-            "timestamp": message.date
-        })
+        cache.set(cache_key, extracted_text, ex=86400)
 
         # Reply with the extracted text
         await message.reply_text(f"**Extracted Text:**\n{extracted_text}")
 
     except Exception as e:
-        # Log the failure in MongoDB
-        ocr_logs_collection.insert_one({
-            "user_id": message.from_user.id,
-            "username": message.from_user.username,
-            "file_name": os.path.basename(file_path),
-            "chat_id": message.chat.id,
-            "timestamp": message.date,
-            "status": f"failed: {e}"
-        })
         await message.reply_text(f"Error during OCR: {e}")
 
     finally:
         # Clean up temporary files
         if os.path.exists(file_path):
             os.remove(file_path)
+    
