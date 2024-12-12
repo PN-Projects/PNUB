@@ -11,4 +11,7 @@ mongo_client = MongoClient(Config.MONGO_URI)
 mongo_db = mongo_client["telegram_userbot"]
 
 # Redis connection
-redis_client = redis.StrictRedis.from_url(Config.REDIS_URL)
+redis_client = redis.StrictRedis(
+  host=Config.REDIS_URL,
+  password=Config.REDIS_PASS
+)
