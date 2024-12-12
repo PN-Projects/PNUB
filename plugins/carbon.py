@@ -1,11 +1,16 @@
+"""
+Plugin Description: Carbonize code using carbon-now CLI tool and send the image to the user.
+Commands:
+- .carbon <flags>: Generates a carbonized image of the code and sends it back. 
+  Example: .carbon --theme dracula --start 3 --end 6
+"""
+
 import os
 import asyncio
 from pyrogram import Client, filters
 from utils.cache import Cache
-from utils.db import Database
 
 cache = Cache()
-db = Database()
 
 async def run_command(cmd):
     proc = await asyncio.create_subprocess_shell(
@@ -40,7 +45,7 @@ async def carbon_handler(client, message):
     cache.set(cache_key, file_path, ex=3600)
 
     try:
-        cmd = f"carbon-now {flags} {file_path}"
+        cmd = f"carbon-now {file_path} {flags}"
         stdout, stderr, returncode = await run_command(cmd)
 
         if returncode != 0:
@@ -51,32 +56,19 @@ async def carbon_handler(client, message):
             raise FileNotFoundError("The carbonized image could not be generated.")
 
         await message.reply_photo(carbon_image, caption=f"Here is your carbonized code with flags: `{flags}`")
-        db.insert_document("carbon_logs", {
-            "user_id": message.from_user.id,
-            "username": message.from_user.username,
-            "chat_id": message.chat.id,
-            "message_id": message.message_id,
-            "file_path": file_path,
-            "flags": flags,
-            "timestamp": message.date
-        })
-        os.remove(carbon_image)
-
+    
     except Exception as e:
-        db.insert_document("error_logs", {
-            "user_id": message.from_user.id,
-            "username": message.from_user.username,
-            "chat_id": message.chat.id,
-            "error": str(e),
-            "flags": flags,
-            "timestamp": message.date
-        })
         await message.reply_text(f"An error occurred: {e}")
 
     finally:
+        # Proper cleanup: Remove both the original code file and the generated carbon image
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        
+        if os.path.exists("/tmp/carbon_output.png"):
+            os.remove("/tmp/carbon_output.png")
+
+        # Clean up the cache
         if cache.exists(cache_key):
-            cached_file_path = cache.get(cache_key).decode()
-            if os.path.exists(cached_file_path):
-                os.remove(cached_file_path)
             cache.delete(cache_key)
-  
+
