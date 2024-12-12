@@ -14,4 +14,4 @@ class Config:
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")  # Replace with your Redis URL
 
     # Throwbin API Key
-    THROWBIN_API_KEY = os.getenv("THROWBIN_API_KEY", "your_throwbin_api_key")  # Replace with your Throwbin API Key
+    #THROWBIN_API_KEY = os.getenv("THROWBIN_API_KEY", "your_throwbin_api_key")  # Replace with your Throwbin API Key
