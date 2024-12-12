@@ -1,11 +1,15 @@
+"""
+Plugin Description: Parse LaTeX code, generate a PDF, and cache or log results.
+Commands:
+- .latex <LaTeX code>: Parses LaTeX code and sends the generated PDF.
+"""
+
 import os
 import subprocess
-import redis
+import uuid
 from pyrogram import Client, filters
 from config import Config
-import uuid
-from utils.cache import Cache  # Use the Cache utility for Redis
-from utils.db import Database  # Use the Database utility (although not used for logging in this case)
+from utils.cache import Cache  # Using the Cache utility
 
 # Redis caching utility
 cache = Cache()
@@ -81,4 +85,4 @@ async def latex_handler(client, message):
             for file in files:
                 os.remove(os.path.join(root, file))
         os.rmdir(temp_dir)
-        
+    
