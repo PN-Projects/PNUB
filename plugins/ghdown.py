@@ -3,20 +3,15 @@ Plugin Description: Download ZIP file of public GitHub repositories.
 Commands:
 - .ghdown <repository_url>: Downloads the ZIP file of the given public GitHub repository.
 """
-
+import asyncio
 import requests
-import redis
-from pymongo import MongoClient
 from pyrogram import Client, filters
-from config import Config
 import os
 import uuid
+from utils import redis_client, mongo_db  # Import centralized connections
 
-# MongoDB and Redis setup
-redis_client = redis.StrictRedis.from_url(Config.REDIS_URL)
-mongo_client = MongoClient(Config.MONGO_URI)
-db = mongo_client["telegram_userbot"]
-gh_logs_collection = db["gh_logs"]
+# MongoDB collection for GitHub logs
+gh_logs_collection = mongo_db["gh_logs"]
 
 @Client.on_message(filters.command("ghdown") & filters.me)
 async def ghdown_handler(client, message):
@@ -105,3 +100,4 @@ async def ghdown_handler(client, message):
     finally:
         if os.path.exists(temp_zip_path):
             os.remove(temp_zip_path)
+        
